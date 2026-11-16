@@ -1,0 +1,27 @@
+\Cref{tab:families} gives per-family results and \cref{tab:teaching} what the scripted hand achieved when teaching.
+
+\begin{table}[h]
+\centering\small
+\caption{Per family (test scenes). Exact and PQ: the memory with every family in memory; logistic: logistic regression, same setting; held out: exact accuracy when the family is absent from memory, and the share of its true units on which the memory then abstains; 5 shots: exact accuracy after adding five handled scenes of the family (mean of 3 draws).}
+\label{tab:families}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+family & Exact & PQ & logistic & held out & abstains & 5 shots \\
+\midrule
+\tabinput{tables/families.tex}
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering\small
+\caption{Teaching (\nTrainPerFamily{} scenes per family). Units taken: units the hand took away per scene. As intended: share of scenes in which the definition ended with one object more per unit taken, ignoring fragments under five patches (and counting them: strict). Positives and carried: memory entries recorded.}
+\label{tab:teaching}
+\begin{tabular}{@{}llrrrrr@{}}
+\toprule
+family & group & units taken & as intended & strict & positives & carried \\
+\midrule
+\tabinput{tables/teaching.tex}
+\bottomrule
+\end{tabular}
+\end{table}

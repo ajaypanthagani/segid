@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paint and split</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<style>
+  :root { --bg:#f6f7f9; --panel:#fff; --ink:#1c2330; --muted:#5d6879; --line:#dde1e8; --accent:#2b59c3; --accent-ink:#fff; --bad:#b3261e; --good:#1b7a46; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#12161d; --panel:#1a2029; --ink:#e8ecf3; --muted:#9aa5b6; --line:#2b3442; --accent:#7aa2ff; --accent-ink:#0e1420; --bad:#ff8a80; --good:#6fd09a; } }
+  :root[data-theme="dark"] { --bg:#12161d; --panel:#1a2029; --ink:#e8ecf3; --muted:#9aa5b6; --line:#2b3442; --accent:#7aa2ff; --accent-ink:#0e1420; --bad:#ff8a80; --good:#6fd09a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  header { padding:20px 16px 8px; max-width:1120px; margin:0 auto; }
+  h1 { font-size:22px; margin:0 0 4px; font-weight:650; }
+  header p { margin:0; color:var(--muted); max-width:72ch; }
+  main { max-width:1120px; margin:0 auto; padding:12px 16px 40px; display:grid; gap:16px; grid-template-columns:minmax(0,1.7fr) minmax(270px,1fr); }
+  @media (max-width: 840px) { main { grid-template-columns:1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .row + .row { margin-top:10px; }
+  .stage { aspect-ratio:4/3; border-radius:8px; overflow:hidden; background:#ecf2f4; touch-action:none; margin-top:10px; border:1px solid var(--line); }
+  canvas { width:100%; height:100%; display:block; cursor:crosshair; }
+  canvas.move { cursor:grab; } canvas.cut { cursor:copy; }
+  button { font:inherit; padding:7px 11px; border-radius:8px; border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; }
+  button:hover:not(:disabled) { border-color:var(--accent); }
+  button:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .seg button { border:0; border-radius:0; }
+  .seg button[aria-pressed="true"] { background:var(--accent); color:var(--accent-ink); font-weight:600; }
+  .sw { width:26px; height:26px; border-radius:50%; border:2px solid var(--line); padding:0; }
+  .sw[aria-pressed="true"] { border-color:var(--ink); box-shadow:0 0 0 2px var(--panel), 0 0 0 4px var(--ink); }
+  label { color:var(--muted); font-size:13px; display:inline-flex; align-items:center; gap:6px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 8px; font-weight:600; }
+  dl { margin:0; display:grid; grid-template-columns:1fr auto; gap:4px 12px; }
+  dt { color:var(--muted); } dd { margin:0; text-align:right; font-variant-numeric:tabular-nums; }
+  .objs { list-style:none; margin:0; padding:0; display:grid; gap:4px; }
+  .objs li { display:flex; align-items:center; gap:8px; }
+  .dot { width:12px; height:12px; border-radius:3px; flex:none; }
+  .muted { color:var(--muted); }
+  #log { max-height:170px; overflow:auto; font-size:13px; display:grid; gap:4px; }
+  #log div { border-left:3px solid var(--accent); padding-left:8px; }
+  .side { display:grid; gap:16px; align-content:start; }
+  #status { font-size:13px; } #status.err { color:var(--bad); }
+  details { color:var(--muted); font-size:14px; } details p { margin:8px 0 0; }
+  .maths { display:grid; gap:10px; font-size:14px; }
+  .maths h3 { font-size:13px; margin:0; color:var(--muted); font-weight:600; }
+  .maths .eq { overflow-x:auto; padding:4px 0; }
+  .maths pre { margin:0; white-space:pre-wrap; font:12px/1.4 ui-monospace,monospace; color:var(--muted); }
+  .maths table { border-collapse:collapse; font-size:12px; width:100%; font-variant-numeric:tabular-nums; }
+  .maths th, .maths td { text-align:right; padding:2px 6px; border-bottom:1px solid var(--line); } .maths th:first-child, .maths td:first-child { text-align:left; }
+  .verdict { font-weight:650; } .verdict.distinct { color:var(--bad); } .verdict.coherent { color:var(--good); }
+  #ls { width:100%; aspect-ratio:13/10; height:auto; border-radius:8px; background:var(--bg); border:1px solid var(--line); cursor:grab; touch-action:none; }
+  #ls:active { cursor:grabbing; }
+  .key { font-size:12px; color:var(--muted); display:inline-flex; align-items:center; gap:5px; }
+  .key i { width:10px; height:10px; border-radius:50%; display:inline-block; }
+  [hidden] { display:none !important; }
+  ol { margin:6px 0 0; padding-left:20px; } li { margin:3px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Paint and split</h1>
+  <p>Paint objects, cut them into parts, and drag a part away. The model sees only what you draw, never the empty paper. Things that touch are one object, and a part becomes its own object when it is seen to move apart.</p>
+</header>
+<main>
+  <section class="card" aria-label="Paint screen">
+    <div class="row">
+      <span class="seg" role="group" aria-label="Tool">
+        <button id="tPaint" aria-pressed="true" title="Paint strokes into the current object">Paint</button>
+        <button id="tErase" aria-pressed="false">Erase</button>
+        <button id="tCut" aria-pressed="false" title="Draw a line across an object to mark where a part could separate">Cut</button>
+        <button id="tMove" aria-pressed="false" title="Drag an object or a part">Move</button>
+        <button id="tInspect" aria-pressed="false" title="Click a seam to see the equations and numbers behind what the model thinks of it">Inspect</button>
+      </span>
+      <span id="palette" class="row" role="group" aria-label="Colour"></span>
+      <label>Brush <input id="size" type="range" min="2" max="12" value="6" aria-label="Brush size"></label>
+    </div>
+    <div class="stage"><canvas id="view" width="640" height="480" aria-label="Paint canvas"></canvas></div>
+    <div class="row">
+      <button id="bImg" title="Place a picture on the canvas as a new object, then cut it and drag parts apart">Add image…</button>
+      <input id="file" type="file" accept="image/*" hidden>
+      <button id="bNew" title="Start a separate object (otherwise strokes add to the current one)">New object</button>
+      <button id="bClear">Clear paper</button>
+      <span class="seg" role="group" aria-label="What to show">
+        <button id="vFormal" aria-pressed="false">Formal</button>
+        <button id="vPred" aria-pressed="true">Predicted</button>
+      </span>
+      <label title="The points the model samples with. They carry no meaning until something splits."><input id="showPatches" type="checkbox"> show sensing patches</label>
+      <span id="status" class="muted" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <div class="side">
+    <section class="card"><h2>Objects</h2><ul class="objs" id="objs"><li class="muted">Nothing yet.</li></ul></section>
+    <section class="card">
+      <h2>Model</h2>
+      <dl>
+        <dt>Sensing patches</dt><dd id="sVis">0</dd>
+        <dt>Pairs seen opening</dt><dd id="sOpened">0</dd>
+        <dt>Seams it expects to separate</dt><dd id="sSeams">0</dd>
+        <dt>Samples learned</dt><dd id="sSamples">0</dd>
+        <dt>Learning events</dt><dd id="sEvents">0</dd>
+        <dt>Cue weights</dt><dd id="sW">–</dd>
+        <dt>Server time / frame</dt><dd id="sMs">–</dd>
+      </dl>
+      <div class="row"><button id="bForget">Forget what it learned</button></div>
+    </section>
+    <section class="card" id="lsCard" hidden>
+      <h2>Latent space</h2>
+      <canvas id="ls" width="520" height="400" aria-label="3-D view of the latent memory"></canvas>
+      <div class="row" style="margin-top:8px">
+        <span class="key"><i style="background:var(--good)"></i>came away</span>
+        <span class="key"><i style="background:#7d8aa0"></i>carried whole</span>
+        <span class="key"><i style="background:#ff8a00"></i>activated now</span>
+        <span class="key"><i style="background:#f2b600"></i>inspected cut</span>
+      </div>
+      <div id="lsLive" style="font-size:13px;margin-top:6px"></div>
+      <div class="row" style="margin-top:8px">
+        <label>Colour by <select id="lsColour"></select></label>
+        <label><input id="lsPos" type="checkbox" checked> came away</label>
+        <label><input id="lsNeg" type="checkbox" checked> carried whole</label>
+        <label><input id="lsOnly" type="checkbox"> only activated</label>
+        <label><input id="lsSpin" type="checkbox"> spin</label>
+        <button id="lsReset" title="Reset the view">Reset</button>
+      </div>
+      <div id="lsInfo" class="muted" style="font-size:12px;margin-top:6px">Drag to rotate, scroll to zoom, click a point to open that entry.</div>
+      <div id="lsEntry" class="maths" style="margin-top:8px"></div>
+    </section>
+    <section class="card"><h2>The maths</h2><div id="maths" class="maths"><span class="muted">Choose <b>Inspect</b> and click a seam on the picture.</span></div></section>
+    <section class="card"><h2>What it learned</h2><div id="log"><span class="muted">Drag an object away, then hold still for a second.</span></div></section>
+    <details class="card" open>
+      <summary>How to use this</summary>
+      <ol>
+        <li>Paint an object. Press <b>New object</b> before painting another one. Things that touch count as one object.</li>
+        <li>Use <b>Cut</b> to draw a line across an object. Nothing is split yet; it only marks where a part could separate. The model sees no difference until a part moves.</li>
+        <li>Use <b>Move</b> and drag a part away from what it touches, then hold still for a second. Dragging it over something hides what it covers, so drag it clear.</li>
+        <li>Paint something similar and cut and move it too. After a few examples the <b>Predicted</b> view starts separating seams before anything moves.</li>
+      </ol>
+      <p><b>Formal</b> shows only what has been seen to separate. <b>Predicted</b> adds what the model has learned about which seams tend to separate: <b style="color:#ff8a00">orange ticks</b> mark places where it expects a split, and a box appears once a whole outline is marked. It needs roughly 5 to 10 examples before it starts.</p>
+    </details>
+  </div>
+</main>
+
+<script>
+"use strict";
+const W = 320, H = 240, SC = 2, TICK_MS = 120;
+const $ = id => document.getElementById(id);
+const cv = $("view"), ctx = cv.getContext("2d");
+const COLOURS = ["#e04646", "#f08a2b", "#f2cf3a", "#38a85a", "#3a6fe0", "#8a4fd0", "#8a5a3a", "#2b2b2b"];
+const st = { tool: "paint", color: COLOURS[0], mode: "pred", img: null, res: null, queue: [], down: false, buf: [], sent: 0,
+             inflight: [], cutBuf: [], pend: { dx: 0, dy: 0 }, last: null, errors: 0 };
+
+/* ----------------------------------------------------------------- controls */
+const pal = $("palette");
+COLOURS.forEach((c, i) => { const b = document.createElement("button"); b.className = "sw"; b.style.background = c; b.setAttribute("aria-label", "colour " + (i + 1)); b.setAttribute("aria-pressed", i === 0); b.onclick = () => { st.color = c; pal.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); setTool("paint"); }; pal.append(b); });
+function setTool(t) { st.tool = t; for (const [k, id] of [["paint", "tPaint"], ["erase", "tErase"], ["cut", "tCut"], ["move", "tMove"], ["inspect", "tInspect"]]) $(id).setAttribute("aria-pressed", k === t); cv.className = t === "move" ? "move" : t === "cut" ? "cut" : ""; }
+$("tPaint").onclick = () => setTool("paint"); $("tErase").onclick = () => setTool("erase"); $("tCut").onclick = () => setTool("cut"); $("tMove").onclick = () => setTool("move"); $("tInspect").onclick = () => setTool("inspect");
+$("bImg").onclick = () => $("file").click();
+$("file").onchange = e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  const im = new Image(), u = URL.createObjectURL(f);
+  im.onload = () => {
+    const k = Math.min(1, 640 / im.width, 480 / im.height), c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(im.width * k)); c.height = Math.max(1, Math.round(im.height * k));
+    c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u);
+    st.queue.push({ t: "image", data: c.toDataURL("image/png") }); setTool("cut"); note("Image added. Use Cut, then Move.");
+  };
+  im.onerror = () => note("Could not read that image.", true); im.src = u;
+};
+$("bNew").onclick = () => st.queue.push({ t: "newobject" });
+$("bClear").onclick = () => { st.queue.push({ t: "clear" }); note("Paper cleared. What it learned is kept."); };
+$("bForget").onclick = () => { if (!confirm("Erase everything the model has learned? This cannot be undone.")) return; st.queue.push({ t: "forget" }); $("log").innerHTML = '<span class="muted">Memory cleared.</span>'; note("Memory cleared."); };
+function setMode(m) { st.mode = m; $("vFormal").setAttribute("aria-pressed", m === "formal"); $("vPred").setAttribute("aria-pressed", m === "pred"); if (st.res) listObjects(st.res); }
+$("vFormal").onclick = () => setMode("formal"); $("vPred").onclick = () => setMode("pred");
+function note(msg, err) { const s = $("status"); s.textContent = msg; s.className = err ? "err" : "muted"; }
+
+/* ------------------------------------------------------------------ pointer */
+function pt(e) { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H]; }
+cv.addEventListener("pointerdown", e => {
+  const p0 = pt(e); if (st.tool === "inspect") { inspect(p0[0], p0[1]); return; }
+  cv.setPointerCapture(e.pointerId); st.down = true; const p = pt(e);
+  if (st.tool === "paint" || st.tool === "erase") { st.buf = [p]; st.sent = 0; }
+  else if (st.tool === "cut") st.cutBuf = [p];
+  else { st.queue.push({ t: "grab", x: p[0], y: p[1] }); st.last = p; }
+});
+cv.addEventListener("pointermove", e => {
+  if (!st.down) return; const p = pt(e);
+  if (st.tool === "paint" || st.tool === "erase") st.buf.push(p);
+  else if (st.tool === "cut") st.cutBuf.push(p);
+  else { st.pend.dx += p[0] - st.last[0]; st.pend.dy += p[1] - st.last[1]; st.last = p; }
+});
+function up() {
+  if (!st.down) return; st.down = false;
+  if (st.tool === "paint" || st.tool === "erase") { chunkStroke(); st.buf = []; st.sent = 0; }
+  if (st.tool === "cut" && st.cutBuf.length > 1) st.queue.push({ t: "cut", pts: st.cutBuf.map(p => [+p[0].toFixed(1), +p[1].toFixed(1)]) });
+  if (st.tool === "move") { flushDrag(); st.queue.push({ t: "release" }); }
+  st.cutBuf = [];
+}
+cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+
+function flushDrag() { if (Math.abs(st.pend.dx) >= 1 || Math.abs(st.pend.dy) >= 1) { st.queue.push({ t: "drag", dx: st.pend.dx, dy: st.pend.dy }); st.pend = { dx: 0, dy: 0 }; } }
+function chunkStroke() {                      // queue the not-yet-sent part of the current stroke
+  if (!st.buf.length || st.sent >= st.buf.length) return;
+  const from = Math.max(0, st.sent - 1), chunk = st.buf.slice(from).map(p => [+p[0].toFixed(1), +p[1].toFixed(1)]);
+  const rgb = st.color.match(/\w\w/g).map(h => parseInt(h, 16));
+  const a = { t: "stroke", pts: chunk, color: rgb, r: +$("size").value, erase: st.tool === "erase" };
+  st.queue.push(a); st.inflight.push({ pts: chunk, color: st.color, r: a.r, erase: a.erase }); st.sent = st.buf.length;
+}
+const GROUP = { stroke: "paint", image: "paint", newobject: "paint", cut: "cut", grab: "move", drag: "move", release: "move", clear: "meta", forget: "meta" };
+function takeActions() {
+  // One kind of change per frame: painting, cutting and moving each get their own frame(s), so the model always sees
+  // the scene before and after (a part it never saw touching something cannot be concluded to have separated from it).
+  if (st.tool === "move" && st.down) flushDrag();
+  if (st.tool === "paint" || st.tool === "erase") chunkStroke();
+  if (!st.queue.length) return [];
+  const g = GROUP[st.queue[0].t]; let n = 0;
+  while (n < st.queue.length && GROUP[st.queue[n].t] === g) n++;
+  return st.queue.splice(0, n);
+}
+
+/* -------------------------------------------------------------------- maths */
+const f = (v, d = 2) => (Math.abs(v) < 1e-3 && v !== 0 ? v.toExponential(1) : (+v).toFixed(d));
+function tex(el, src, display) {
+  const d = document.createElement("div"); d.className = "eq";
+  if (window.katex) { try { katex.render(src, d, { displayMode: !!display, throwOnError: false }); } catch (e) { d.innerHTML = "<pre></pre>"; d.firstChild.textContent = src; } }
+  else { d.innerHTML = "<pre></pre>"; d.firstChild.textContent = src; }
+  el.append(d);
+}
+function head(el, t) { const h = document.createElement("h3"); h.textContent = t; el.append(h); }
+function para(el, t) { const p = document.createElement("div"); p.className = "muted"; p.textContent = t; el.append(p); }
+function latentMaths(box, m) {
+  const c = m.cfg;
+  head(box, "1. The candidate: " + m.part + " of " + m.of + " patches cut away from the rest");
+  para(box, "Described only by physical traits (ratios and changes, no colour values or positions). Each trait counts in proportion to how well it has told apart cuts that came away from cuts that were carried whole:");
+  const t0 = document.createElement("table");
+  t0.innerHTML = "<tr><th>trait</th><th>value</th><th>weight r</th></tr>" + m.traits.slice().sort((a, b) => b.rel - a.rel).slice(0, 10).map(t => `<tr><td>${t.name}</td><td>${f(t.value)}</td><td>${f(t.rel)}</td></tr>`).join("");
+  box.append(t0);
+  head(box, "2. Distance to each stored entry j  (" + m.memory + " in memory)");
+  tex(box, String.raw`D_j=\frac{1}{T}\sum_{i} r_i\,\Big(\frac{x_i-x_{j,i}}{\sigma_i}\Big)^2`, true);
+  head(box, "3. Kernel: how much each entry counts");
+  tex(box, String.raw`K_j=\exp\!\Big(-\frac{\max(D_j-\tau,0)}{c\,\tau}\Big),\ \tau=${f(m.tau, 3)}\ (\text{the }${c.k_nn}\text{th nearest}),\ c=${c.c}`, true);
+  tex(box, String.raw`\rho=\exp(-D_{\min}/t)=\exp(-${f(m.dmin, 3)}/${c.t_abs})=${f(m.rho, 3)}`, true);
+  const t = document.createElement("table");
+  t.innerHTML = "<tr><th>nearest entries</th><th>separates y</th><th>weight w</th><th>D</th><th>K</th></tr>" + m.neighbours.map(n => `<tr><td>${n.y ? "came away" : "carried whole"}</td><td>${n.y}</td><td>${f(n.w)}</td><td>${f(n.D, 3)}</td><td>${f(n.K, 3)}</td></tr>`).join("");
+  box.append(t);
+  head(box, "4. Evidence and chance it separates, with bounds");
+  tex(box, String.raw`n_1=\rho\sum_j K_j w_j y_j=${f(m.n1)},\quad n_0=\rho\sum_j K_j w_j(1-y_j)=${f(m.n0)}`, true);
+  tex(box, String.raw`\hat p=\frac{\alpha+n_1}{\alpha+\beta+n_1+n_0}=${f(m.p)},\quad [p_{low},p_{high}]=[${f(m.lo)},\ ${f(m.hi)}]`, true);
+  head(box, "5. Statement");
+  tex(box, String.raw`p_{low}\ge${c.theta_hi}\Rightarrow\text{separates};\quad p_{high}\le${c.theta_lo}\Rightarrow\text{stays joined};\quad\text{else unknown}`, true);
+  const v = document.createElement("div"); v.className = "verdict " + (m.statement === "separates" ? "distinct" : m.statement === "stays joined" ? "coherent" : "unknown"); v.textContent = "→ " + m.statement; box.append(v);
+}
+async function inspect(x, y) {
+  const box = $("maths"); st.mark = null;
+  try {
+    const r = await fetch("/explain", { method: "POST", body: JSON.stringify({ x, y }) }), m = await r.json();
+    box.replaceChildren();
+    if (!m.found) { para(box, m.why); return; }
+    st.mark = [m.x, m.y]; ls.q = m.q3 || null; ls.nn = m.nn3 || null;
+    if (m.latent) { latentMaths(box, m); return; }
+    const M = m.mixed, c = m.cfg, k = m.kernel;
+    head(box, "1. What the model sees at this seam");
+    para(box, `Two windows, one on each side of the pair, at 3 sizes, each turned into ${m.dims.side} + ${m.dims.seam} + ${m.dims.app} numbers: φ = (φ_side, φ_seam, φ_app). They are lightness, edge direction and strength, and colour change, measured by fixed formulas.`);
+    head(box, "2. Distance to each stored example j  (" + m.memory + " in memory)");
+    tex(box, String.raw`D_j=\sum_{g\in\{side,seam,app\}}\omega_g\,\frac{\lVert \varphi_g-\varphi_{j,g}\rVert^2}{\dim g}`, true);
+    if (k) {
+      para(box, `Using the expert that currently has the most weight (${k.expert}, c = ${f(k.c)}).`);
+      head(box, "3. Kernel: how much each example counts");
+      tex(box, String.raw`K_j=\exp\!\Big(-\frac{\max(D_j-\tau,0)}{c\,\tau}\Big),\qquad \tau=${f(k.tau, 3)}\ (\text{the }k_{nn}=${c.k_nn}\text{th nearest})`, true);
+      tex(box, String.raw`\rho=\exp\!\big(-D_{\min}/t\big)=\exp(-${f(k.dmin, 3)}/${c.t_abs})=${f(k.rho, 3)}`, true);
+      const t = document.createElement("table");
+      t.innerHTML = "<tr><th>nearest examples</th><th>outcome y</th><th>weight w</th><th>D</th><th>K</th></tr>" + m.neighbours.map(n => `<tr><td>${n.y ? "came apart" : "stayed joined"}</td><td>${n.y}</td><td>${f(n.w)}</td><td>${f(n.D, 3)}</td><td>${f(n.K, 3)}</td></tr>`).join("");
+      box.append(t);
+    }
+    head(box, "4. Evidence for and against separating (per expert, then mixed)");
+    tex(box, String.raw`n_1=\rho\sum_j K_j\,w_j\,y_j,\qquad n_0=\rho\sum_j K_j\,w_j\,(1-y_j),\qquad n=\sum_e W_e\,n^{(e)}`, true);
+    tex(box, String.raw`n_1=${f(M.n1)},\quad n_0=${f(M.n0)}`, true);
+    const t2 = document.createElement("table");
+    t2.innerHTML = "<tr><th>expert (width, cue emphasis)</th><th>W</th><th>n₁</th><th>n₀</th><th>p</th></tr>" + m.experts.slice().sort((a, b) => b.W - a.W).slice(0, 6).map(e => `<tr><td>${e.name}, c=${e.c}</td><td>${f(e.W, 3)}</td><td>${f(e.n1)}</td><td>${f(e.n0)}</td><td>${f(e.p)}</td></tr>`).join("");
+    box.append(t2);
+    para(box, "Each expert's weight W is multiplied after every learning event by exp(−η·loss) and renormalised, so the cues that predicted outcomes best gain weight:");
+    tex(box, String.raw`W_e\leftarrow W_e\,e^{-\eta L_e}/Z,\quad \eta=${c.eta}`, true);
+    const g = m.group_weights;
+    tex(box, String.raw`\bar\omega=(\text{side }${f(g.side)},\ \text{seam }${f(g.seam)},\ \text{colour }${f(g.app)})`, true);
+    head(box, "5. Chance this pair separates, with bounds");
+    tex(box, String.raw`\hat p=\frac{\alpha+n_1}{\alpha+\beta+n_1+n_0}=\frac{${c.alpha}+${f(M.n1)}}{${c.alpha + c.beta}+${f(M.n1 + M.n0)}}=${f(M.p)}`, true);
+    tex(box, String.raw`[p_{low},p_{high}]=\big[\mathrm{Beta}^{-1}_{\gamma},\ \mathrm{Beta}^{-1}_{1-\gamma}\big](\alpha+n_1,\ \beta+n_0)=[${f(M.lo)},\ ${f(M.hi)}]`, true);
+    head(box, "6. Statement");
+    tex(box, String.raw`p_{low}\ge${c.theta_d}\Rightarrow\text{distinct};\quad p_{high}\le${c.theta_c}\Rightarrow\text{coherent};\quad\text{else unknown (needs }n\ge${c.s_min})`, true);
+    const v = document.createElement("div"); v.className = "verdict " + m.statement; v.textContent = "→ " + m.statement + (m.formal_open ? "   (this pair has also been seen to open)" : ""); box.append(v);
+  } catch (e) { box.textContent = "Could not get the explanation."; }
+}
+
+/* --------------------------------------------------------------------- loop */
+async function loop() {
+  for (;;) {
+    const t0 = performance.now(), actions = takeActions(), n = actions.filter(a => a.t === "stroke").length;
+    try {
+      const r = await fetch("/tick", { method: "POST", body: JSON.stringify({ actions }) });
+      if (!r.ok) throw new Error("server said " + r.status);
+      const res = await r.json(); st.errors = 0; st.inflight.splice(0, n); apply(res); note("");
+    } catch (e) {
+      st.errors++; note("Cannot reach the server. Start it with:  PYTHONPATH=. .venv/bin/python web/server.py", true);
+    }
+    await new Promise(r => setTimeout(r, Math.max(0, TICK_MS - (performance.now() - t0))));
+  }
+}
+function apply(res) {
+  st.res = res; const im = new Image(); im.onload = () => { st.img = im; }; im.src = res.image;
+  const s = res.stats;
+  $("sSeams").textContent = (res.seams || []).length; $("sVis").textContent = s.patches_visible; $("sOpened").textContent = s.pairs_opened; $("sSamples").textContent = s.samples; $("sEvents").textContent = s.events;
+  const g = s.group_weights; $("sW").textContent = `side ${g.side} · seam ${g.seam} · colour ${g.app}`; $("sMs").textContent = s.ms + " ms";
+  listObjects(res);
+  if (!ls.off && s.samples !== ls.last) { ls.last = s.samples; ls.q = null; ls.sel = null; ls.selNear = []; $("lsEntry").replaceChildren(); lsFetch(); }
+  if ("latent_act" in res) setAct(res.latent_act);
+  for (const e of res.events) { const log = $("log"); if (log.querySelector(".muted")) log.replaceChildren(); const d = document.createElement("div"); d.textContent = new Date().toLocaleTimeString() + "  " + e; log.prepend(d); }
+}
+function colour(id, bg) { return bg ? "rgb(120,130,140)" : `hsl(${Math.round(((id * 0.61803) % 1) * 360)} 85% 50%)`; }
+function listObjects(res) {
+  const objs = (st.mode === "formal" ? res.formal : res.predicted), ul = $("objs"); ul.replaceChildren();
+  if (!objs.length) { const li = document.createElement("li"); li.className = "muted"; li.textContent = "No objects yet. Paint something."; ul.append(li); return; }
+  for (const o of objs) { const li = document.createElement("li"), d = document.createElement("span"); d.className = "dot"; d.style.background = colour(o.id, false); li.append(d, document.createTextNode("object " + o.id)); if (o.parent != null) { const m = document.createElement("span"); m.className = "muted"; m.textContent = " · split from object " + o.parent; li.append(m); } ul.append(li); }
+}
+
+/* --------------------------------------------------------------------- draw */
+function stroke(c, s, color, r) { c.strokeStyle = color; c.fillStyle = color; c.lineWidth = (2 * r + 1) * SC; c.lineCap = c.lineJoin = "round"; c.beginPath(); s.forEach((p, i) => i ? c.lineTo(p[0] * SC, p[1] * SC) : c.moveTo(p[0] * SC, p[1] * SC)); if (s.length === 1) c.lineTo(s[0][0] * SC + .01, s[0][1] * SC); c.stroke(); }
+function draw() {
+  ctx.imageSmoothingEnabled = false; ctx.fillStyle = "#ecf2f4"; ctx.fillRect(0, 0, cv.width, cv.height);
+  if (st.img) ctx.drawImage(st.img, 0, 0, cv.width, cv.height);
+  const prev = [...st.inflight]; if ((st.tool === "paint" || st.tool === "erase") && st.down && st.sent < st.buf.length) prev.push({ pts: st.buf.slice(Math.max(0, st.sent - 1)), color: st.color, r: +$("size").value, erase: st.tool === "erase" });
+  for (const p of prev) stroke(ctx, p.pts, p.erase ? "#ecf2f4" : p.color, p.r);
+  const r = st.res;
+  if (r) {
+    const key = st.mode === "formal" ? 2 : 3, objs = st.mode === "formal" ? r.formal : r.predicted, bg = new Set(objs.filter(o => o.background).map(o => o.id));
+    if ($("showPatches").checked) for (const p of r.pts) { const isbg = bg.has(p[key]) || p[key] < 0; ctx.globalAlpha = isbg ? .35 : 1; ctx.fillStyle = colour(p[key], isbg); ctx.beginPath(); ctx.arc(p[0] * SC, p[1] * SC, isbg ? 1.6 : 3, 0, 6.283); ctx.fill(); }
+    if (st.mode === "pred" && r.seams && r.seams.length) {          // seams the model expects to separate, before anything moves
+      ctx.globalAlpha = .95; ctx.strokeStyle = "#ff8a00"; ctx.lineWidth = 4; ctx.lineCap = "round"; ctx.beginPath();
+      for (const q of r.seams) { ctx.moveTo((q[0] + q[2]) / 2 * SC - (q[1] - q[3]) * SC * .5, (q[1] + q[3]) / 2 * SC + (q[0] - q[2]) * SC * .5); ctx.lineTo((q[0] + q[2]) / 2 * SC + (q[1] - q[3]) * SC * .5, (q[1] + q[3]) / 2 * SC - (q[0] - q[2]) * SC * .5); }
+      ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    ctx.globalAlpha = 1; ctx.lineWidth = 2; ctx.font = "600 13px system-ui, sans-serif"; ctx.textBaseline = "bottom";
+    for (const o of objs) {
+      if (o.background) continue; const [x0, y0, x1, y1] = o.box.map(v => v * SC), c = colour(o.id, false);
+      ctx.strokeStyle = c; ctx.strokeRect(x0 - 6, y0 - 6, x1 - x0 + 12, y1 - y0 + 12);
+      const t = "object " + o.id, w = ctx.measureText(t).width + 10; ctx.fillStyle = c; ctx.fillRect(x0 - 6, y0 - 26, w, 20); ctx.fillStyle = "#fff"; ctx.fillText(t, x0 - 1, y0 - 9);
+    }
+  }
+  if (st.tool === "cut" && st.down && st.cutBuf.length > 1) { ctx.strokeStyle = "#111"; ctx.setLineDash([6, 4]); ctx.lineWidth = 2; ctx.beginPath(); st.cutBuf.forEach((p, i) => i ? ctx.lineTo(p[0] * SC, p[1] * SC) : ctx.moveTo(p[0] * SC, p[1] * SC)); ctx.stroke(); ctx.setLineDash([]); }
+  if (st.mark) { ctx.strokeStyle = "#111"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(st.mark[0] * SC, st.mark[1] * SC, 9, 0, 6.283); ctx.stroke(); }
+  requestAnimationFrame(draw);
+}
+
+/* ------------------------------------------------------------ latent space (3-D) */
+const ls = { c: $("ls"), data: null, yaw: 0.6, pitch: 0.35, zoom: 1, drag: null, moved: 0, q: null, nn: null, last: -1, busy: false,
+             act: null, sel: null, selNear: [], hover: null, screen: [], colourBy: "behaviour" };
+const lctx = ls.c.getContext("2d");
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim() || "#888"; }
+function setAct(a) {
+  ls.act = a && a.pts && a.pts.length ? { info: a, map: new Map(a.pts.map(p => [p[5], p])) } : null;
+  const el = $("lsLive");
+  if (!ls.act) { el.textContent = "Nothing activated: no object on the canvas yet, or too small to read."; return; }
+  const i = ls.act.info;
+  el.innerHTML = `<b style="color:#ff8a00">Activated now:</b> ${i.pts.length} stored entries (${i.n_pos} that came away, ${i.n_neg} carried whole) were read for ${i.considered} candidate cuts; it called ${i.cuts} as separating.`;
+}
+async function lsFetch() {
+  if (ls.busy) return; ls.busy = true;
+  try {
+    const d = await (await fetch("/latent")).json();
+    if (d.n < 0) { $("lsCard").hidden = true; ls.off = true; return; }
+    ls.data = d; $("lsCard").hidden = false; if (d.act !== undefined && !ls.act) setAct(d.act);
+    const sel = $("lsColour");
+    if (d.names && sel.options.length <= 1) { sel.replaceChildren(new Option("behaviour", "behaviour"), ...d.names.map((n, i) => new Option("trait: " + n, String(i)))); sel.value = ls.colourBy; }
+    $("lsInfo").textContent = `${d.n} entries in memory (${d.n_pos || 0} came away, ${d.n_neg || 0} carried whole); drawing ${d.shown || 0}. Axes (greatest spread): ` +
+      (d.axes || []).map((a, i) => "xyz"[i] + " " + Math.round(100 * a.share) + "% (" + a.traits.join(", ") + ")").join("; ") + ". Drag to rotate, scroll to zoom, click a point to open that entry.";
+  } catch (e) {} finally { ls.busy = false; }
+}
+function lsView() {
+  const cy = Math.cos(ls.yaw), sy = Math.sin(ls.yaw), cp = Math.cos(ls.pitch), sp = Math.sin(ls.pitch);
+  const W = ls.c.width, H = ls.c.height, R = 0.42 * Math.min(W, H) * ls.zoom;
+  return p => { const x1 = p[0] * cy + p[2] * sy, z1 = -p[0] * sy + p[2] * cy, y2 = p[1] * cp - z1 * sp, z2 = p[1] * sp + z1 * cp, f = 1 / (1 - 0.25 * z2);
+    return [W / 2 + x1 * R * f, H / 2 - y2 * R * f, z2, f]; };
+}
+function ramp(z) {                                  // blue (low) - grey - red (high), for colouring by a trait
+  const t = Math.max(-1, Math.min(1, z / 2.5)), a = Math.abs(t);
+  return t < 0 ? `rgb(${Math.round(125 - 80 * a)},${Math.round(138 - 20 * a)},${Math.round(160 + 80 * a)})` : `rgb(${Math.round(125 + 120 * a)},${Math.round(138 - 70 * a)},${Math.round(160 - 110 * a)})`;
+}
+function lsDraw() {
+  const c = lctx, W = ls.c.width, H = ls.c.height; c.clearRect(0, 0, W, H);
+  if (!ls.data || ls.off) { requestAnimationFrame(lsDraw); return; }
+  if ($("lsSpin").checked && !ls.drag) ls.yaw += 0.004;
+  const P = lsView(), good = css("--good"), line = css("--line"), ink = css("--muted"), showPos = $("lsPos").checked, showNeg = $("lsNeg").checked, only = $("lsOnly").checked;
+  const ti = ls.colourBy === "behaviour" ? -1 : +ls.colourBy, tz = ls.data.tz;
+  c.strokeStyle = line; c.lineWidth = 1; c.beginPath();
+  for (let k = 0; k < 3; k++) { const a = [0, 0, 0], b = [0, 0, 0]; a[k] = -1.1; b[k] = 1.1; const A = P(a), B = P(b); c.moveTo(A[0], A[1]); c.lineTo(B[0], B[1]); }
+  c.stroke(); c.fillStyle = ink; c.font = "11px system-ui, sans-serif";
+  [["x", [1.15, 0, 0]], ["y", [0, 1.15, 0]], ["z", [0, 0, 1.15]]].forEach(([n, v]) => { const q = P(v); c.fillText(n, q[0], q[1]); });
+  const items = [], seen = new Set(), A = ls.act ? ls.act.map : new Map();
+  ls.data.pts.forEach((p, n) => { const lit = A.get(p[5]); seen.add(p[5]); if (only && !lit) return; if (!(p[3] ? showPos : showNeg) && !lit) return;
+    items.push({ q: P(p), y: p[3], w: p[4], idx: p[5], s: lit ? lit[6] : 0, z: ti >= 0 ? tz[n][ti] / 10 : null }); });
+  for (const [idx, p] of A) if (!seen.has(idx)) items.push({ q: P(p), y: p[3], w: p[4], idx, s: p[6], z: null });   // activated entries outside the drawn sample
+  items.sort((a, b) => a.q[2] - b.q[2]);
+  ls.screen = [];
+  for (const p of items) {
+    const base = (p.y ? 3.2 : 2.2) * p.q[3] * Math.sqrt(ls.zoom);
+    c.globalAlpha = Math.min(1, (p.y ? 0.85 : 0.5) * (0.45 + 0.55 * p.w)) * (0.55 + 0.45 * p.q[3] / 1.2);
+    c.fillStyle = p.z != null ? ramp(p.z) : p.y ? good : "#7d8aa0"; c.beginPath(); c.arc(p.q[0], p.q[1], base, 0, 6.283); c.fill();
+    if (p.s > 0) {                                                          // lit up: this entry is being read right now
+      c.globalAlpha = 0.35 + 0.65 * p.s; c.strokeStyle = "#ff8a00"; c.lineWidth = 1.5; c.beginPath(); c.arc(p.q[0], p.q[1], base + 2 + 3 * p.s, 0, 6.283); c.stroke();
+    }
+    ls.screen.push({ x: p.q[0], y: p.q[1], z: p.q[2], idx: p.idx, r: base + 4 });
+  }
+  c.globalAlpha = 1;
+  if (ls.q) {                                                               // the cut being inspected, and the entries it was compared with
+    const Q = P(ls.q);
+    for (const n of ls.nn || []) { const N = P(n); c.strokeStyle = "#f2b600"; c.globalAlpha = .55; c.lineWidth = 1; c.beginPath(); c.moveTo(Q[0], Q[1]); c.lineTo(N[0], N[1]); c.stroke();
+      c.globalAlpha = 1; c.beginPath(); c.arc(N[0], N[1], 5, 0, 6.283); c.stroke(); }
+    c.fillStyle = "#f2b600"; c.strokeStyle = "#111"; c.lineWidth = 2; c.beginPath(); c.arc(Q[0], Q[1], 7, 0, 6.283); c.fill(); c.stroke();
+  }
+  if (ls.sel) {                                                             // the entry opened for exploring, and its nearest entries
+    const S = P(ls.sel.xyz);
+    for (const n of ls.selNear) { const N = P(n.xyz); c.strokeStyle = ink; c.globalAlpha = .6; c.lineWidth = 1; c.setLineDash([3, 3]); c.beginPath(); c.moveTo(S[0], S[1]); c.lineTo(N[0], N[1]); c.stroke(); c.setLineDash([]);
+      c.globalAlpha = 1; c.strokeStyle = css("--ink"); c.beginPath(); c.arc(N[0], N[1], 5, 0, 6.283); c.stroke(); }
+    c.globalAlpha = 1; c.strokeStyle = css("--ink"); c.lineWidth = 2.5; c.beginPath(); c.arc(S[0], S[1], 8, 0, 6.283); c.stroke();
+  }
+  if (ls.hover) { c.fillStyle = css("--ink"); c.font = "12px system-ui, sans-serif"; c.fillText("entry " + ls.hover.idx, ls.hover.x + 10, ls.hover.y - 8); }
+  requestAnimationFrame(lsDraw);
+}
+function lsPick(e) {
+  const r = ls.c.getBoundingClientRect(), x = (e.clientX - r.left) * ls.c.width / r.width, y = (e.clientY - r.top) * ls.c.height / r.height;
+  let best = null, bd = 1e9; for (const p of ls.screen) { const d = Math.hypot(p.x - x, p.y - y); if (d <= p.r + 3 && (d - p.z * 2) < bd) { bd = d - p.z * 2; best = p; } }
+  return best;
+}
+async function lsOpen(idx) {
+  try {
+    const m = await (await fetch("/entry", { method: "POST", body: JSON.stringify({ idx }) })).json();
+    if (m.error) return; ls.sel = m; ls.selNear = m.near;
+    const box = $("lsEntry"); box.replaceChildren();
+    head(box, `Entry ${m.idx}: ${m.y == null ? "behaviour not observed" : m.y > 0.5 ? "this cut came away" : "this cut was carried whole"} (evidence weight ${f(m.w)})`);
+    para(box, "Its traits, most unusual first (z = distance from the average entry, in spreads; r = how much that trait counts when comparing):");
+    const t = document.createElement("table");
+    t.innerHTML = "<tr><th>trait</th><th>value</th><th>z</th><th>r</th></tr>" + m.traits.slice().sort((a, b) => Math.abs(b.z) - Math.abs(a.z)).slice(0, 8).map(x => `<tr><td>${x.name}</td><td>${f(x.value)}</td><td>${f(x.z)}</td><td>${f(x.rel)}</td></tr>`).join("");
+    box.append(t);
+    para(box, "Nearest entries (click one to move there):");
+    const t2 = document.createElement("table");
+    t2.innerHTML = "<tr><th>entry</th><th>behaviour</th><th>w</th><th>D</th></tr>" + m.near.map(n => `<tr style="cursor:pointer" data-i="${n.idx}"><td>${n.idx}</td><td>${n.y > 0.5 ? "came away" : "carried whole"}</td><td>${f(n.w)}</td><td>${f(n.D, 3)}</td></tr>`).join("");
+    t2.querySelectorAll("tr[data-i]").forEach(r => r.onclick = () => lsOpen(+r.dataset.i));
+    box.append(t2);
+  } catch (e) {}
+}
+ls.c.addEventListener("pointerdown", e => { ls.drag = [e.clientX, e.clientY]; ls.moved = 0; ls.c.setPointerCapture(e.pointerId); });
+ls.c.addEventListener("pointermove", e => {
+  if (!ls.drag) { ls.hover = lsPick(e); return; }
+  const dx = e.clientX - ls.drag[0], dy = e.clientY - ls.drag[1]; ls.moved += Math.abs(dx) + Math.abs(dy);
+  ls.yaw += dx * 0.01; ls.pitch = Math.max(-1.5, Math.min(1.5, ls.pitch + dy * 0.01)); ls.drag = [e.clientX, e.clientY];
+});
+ls.c.addEventListener("pointerup", e => { const wasClick = ls.moved < 5; ls.drag = null; if (wasClick) { const p = lsPick(e); if (p) lsOpen(p.idx); else { ls.sel = null; ls.selNear = []; $("lsEntry").replaceChildren(); } } });
+ls.c.addEventListener("pointerleave", () => { ls.hover = null; });
+ls.c.addEventListener("wheel", e => { e.preventDefault(); ls.zoom = Math.max(0.4, Math.min(4, ls.zoom * Math.exp(-e.deltaY * 0.001))); }, { passive: false });
+$("lsReset").onclick = () => { ls.yaw = 0.6; ls.pitch = 0.35; ls.zoom = 1; };
+$("lsColour").onchange = e => { ls.colourBy = e.target.value; };
+lsFetch(); lsDraw();
+draw(); loop();
+</script>
+</body>
+</html>
